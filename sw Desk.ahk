@@ -11,14 +11,11 @@ HOW TO USE:
  This script was built around my own needs but can be adjusted to your own needs in 'CUSTOMISATION' section below
 
 TO-DO:
- Finish customisation options (move all references to names/nicknames to 'CUSTOMISATION' section
- Add arrays for nickname strings
- Add support for up to 10 devices
  Experiment with making changes with Sound window hidden
  Extra help for closing any possible sub-windows of Sound main window (eg 'HDMI Audio Device Properties')
 
 CUSTOMISATION:
- Replace these with your device* and preferred names:
+ Replace with (or add) your device* official and preferred names:
 */
    dev1Name = Speakers
    dev1Nick = Desk
@@ -34,14 +31,15 @@ CUSTOMISATION:
 
    dev5Name = Your Device Name Here
    dev5Nick = Your device nickname here
-
+   
 /*Device names are displayed and can be renamed in the classic 'Sound' interface (Start->run->mmsys.cpl)
  To rename: Open properties and the device name should be highlighted and editable
 
 CHANGELOG:
+ 1.44.1 15-08-2019  More tidy up, improved search for device, checks names of as many devices as listed in customisation
  1.44.0 02-08-2019  Big tidy up, added simple customisation support
- 1.43.3 27/07/2019  TV Speakers added
- 1.43.2       2018  Minor Text Fixes lol
+ 1.43.3 27-07-2019  TV Speakers added
+ 1.43.2       2018  Minor Text Fixes (lol)
  1.43.1       2018  Increased bluetooth wait time 
  1.43         2017  More 'Bal51' options and standard set (no space/dot)
  1.42         2017  Loudness Equalisation Update (loudMode,loudToggle)
@@ -179,12 +177,15 @@ Loop { ;GetOpsLoop					;Loop to try again: First from filename info, subsequent 
 ; else
 ;  NoDeviceFlag = 1 and continue
 
-Loop, 10
- if InStr(opsInfoRaw, dev%A_Index%Name) or InStr(opsInfoRaw, dev%A_Index%Nick)
-  {
-   desDev := dev%A_Index%Name
-   break
-  }
+Loop
+    if InStr(opsInfoRaw, dev%A_Index%Name) or InStr(opsInfoRaw, dev%A_Index%Nick)
+    {                                                                        ;if script filename or user input matches a hard-coded device name or nickname
+        desDev := dev%A_Index%Name                ;eg desDev = dev3Name = "Speakers"
+        desDevNum = %A_Index%                         ;eg desDev = 3
+        break                                                            ;continue script with a desired device set
+        }
+    else if !desDev := dev%A_Index%Name       ;Device doesn't exist. End of list of devices in CUSTOMISATION section (or gap in numbering)
+        break                                                           ;continue script WITHOUT a desired device set
  
 ;----------------------------------
  ;Special Options
@@ -511,54 +512,69 @@ Return
 
 ;--------------------------------------------------------------------------------------------------------------
 FindDevice:
-Loop {	;RetryLoop						                ;Retries whole Switch process once or more
- GoSub, SoundCloseOpen
- 
- ;manual + switchmode so just end script now that sound dialogue should already be open ready to switch devices or whatever manually
- if (switchMode and manualMode) or !desDev {              ;In either case just quit but different tooltips
-  if (switchMode and manualMode)	                     ;Manual and Switch aka sw man
-   ToolTip Sound dialogue opened for manual use (or error maybe idk)`nQuitting...
-  else             						                 ;No device set, so just 
-   ToolTip Sound options opened`, no device specified`nQuitting...
-  Sleep 1000                                             ;Display one of two ToolTips for 1sec
-  ExitApp                                                ;Just exit at this point
-  }
- 
- ToolTip Searching for "%desDev%"
- Loop {	;ListRestartLoop    	                        ;Restarts search from top of list
-  ControlSend, SysListView321, {HOME}, ^Sound$						    ;Focus on first item in list
- ;WinActivate Sound
- ;Send {Home}
-  ControlGet, i, List, Count, SysListView321, Sound 	;Get number of devices
-  Loop { ;DeviceWaitLoop		                        ;Allows script to wait for "Not Plugged In" devices
-   ControlGet, x, List, Selected, SysListView321, Sound	;Get info (x = Device: Name, Description, Status)
-   if InStr(x, desDev)					                ;If device info (x) contains desired device (desDev) name
-    if InStr(x, "Not Plugged In") {			            ;Device is disconnected (not plugged in) as with waiting on Bluetooth headset
-     i = 100						                    ;count becomes timer to search for approx 0.5sec per 1
-     notPlugged = 1					                    ;Desired device found but not connected (usually Bluetooth)
-     ToolTip (%A_Index%/%i%) Waiting for "%DesDev%"`nPress [ESC] to cancel  ;Display allowed time to conenct (a few sec or i/2)
-     Sleep 500
-     }
-    else ;if InStr(x, "Not Plug..	                    ;Device is not disconnected (probably connected)
-     break 3						                    ;success, break all 3 loops (DeviceWait, ListRestart, and Retry loops) to continue (next hits the return at end of this SR)
-   else { ;if InStr(x, desDev)	                        ;Not correct device
-    if notPlugged					                    ;Correct device was selected but has disappeared (expected baheviour briefly before device connects)
-     break						                        ;break per device loop to restart list (to re-find now-connected device)
-    ;Send {Down}						                    ;Normal ops: Move down one to check next list item
-    ControlSend, SysListView321, {Down}, ^Sound$		                    ;Normal ops: Not correct device so move down one to check next list item
-    }
-   if (A_Index >= i)					                ;Checked all list items OR reached end of i timer
-    break 2                                             ;Break out of per device loop AND list restart loop (hits "retries whole thing once loop")
-   } ;DeviceWaitLoop
-  notPlugged = 						                    ;notPlug is cleared for restarting list to (hopefully) find newly connected device
-  Sleep 2000						                    ;allowance for BT headset to report available
-  } ;/ListRestartLoop
- failedAttempts++ 
-if (A_Index >= 5) {
-  MsgBox Failed attempts: %failedAttempts%`nDevice not found`nEnsure "show disconnected devices" is checked`nCheck name of device `/ filename`nQuitting...
-  ExitApp
-  }
- } ;/RetryLoop
+    Loop
+    {	;RetryLoop						                                                                       ;Retries whole Switch process once or more
+        if ((A_Index = 1) or !mod(A_Index, 20))
+            GoSub, SoundCloseOpen                                                                 ;Only close and re-open Sound window on first and SOME subsequent attempts for efficiency v reliability
+        if (switchMode and manualMode) or !desDev                                   ;manual + switchmode OR no desired device set so just end script now that sound dialogue should already be open ready for manual switching or other
+        {                                                                                                              ;In either case just quit (ExitApp) after displaying the appropriaet ToolTip message:
+            if (switchMode and manualMode)	                                                ;aka "sw man"
+                ToolTip Sound dialogue opened for manual use (or error maybe idk)`nQuitting...
+            else             						                                                                 ;
+                ToolTip Sound options opened`, no device specified`nQuitting...
+            Sleep 1000                                                                                          ;Display the ToolTip for 1sec and..
+            ExitApp                                                                                               ;Just exit at this point
+            }
+            
+        ToolTip Searching for "%desDev%"
+        Loop 	;ListRestartLoop    	                                                                    ;Restarts search from top of list
+        {
+            ControlSend, SysListView321, {HOME}, ^Sound$			                ;Focus on first item in list
+            ControlGet, i, List, Count, SysListView321, Sound 	                        ;Get number of devices
+            
+            Loop  ;PerDeviceWaitLoop		                                                            ;Allows script to wait for "Not Plugged In" / "Disconnected" devices
+            {
+             
+                ControlGet, x, List, Selected, SysListView321, Sound	            ;Get info (x = Device: Name, Description, Status)
+                
+                if InStr(x, desDev)					                                                        ;If device info (x) contains desired device (desDev) name
+                {
+                    if (InStr(x, "Not Plugged In") or InStr(x, "Disconnected"))    ;Device exists but not connected, Bluetooth device is off or unplugged cable
+                    {
+                        i = 100						                                                            ;NEW: Back to i OLD:Timer to search for approx 0.5sec per 1 (Previously multi-use of i variable but unnecessarily complicated)
+                        notConnected = 1					                                                ;Desired device found but not connected (usually Bluetooth)
+                        ToolTip (%A_Index%/%i%) Waiting for "%DesDev%"`nPress [ESC] to cancel
+                        Sleep 500                                                                               ;Display allowed time to connect (a few sec or i/2)
+                        }
+                    else  ;if InStr(x, "Not Plug..	                                                        ;Device is NOT disconnected/not-plugged-in (probably connected)
+                        break 3						                                                            ;success, break all 3 loops (DeviceWait, ListRestart, and Retryloop) to continue (next hits the return at end of this SR). Just "return" would probably work
+                    }
+                else ;if InStr(x, desDev)	                                                                ;Not correct device
+                {
+                 ;GoSub, DebugMsgBox
+                    if notConnected					                                                    ;Correct device was selected but has disappeared (expected baheviour briefly before device connects)
+                        break						                                                                ;break per device loop to restart list (to re-find now-connected device)
+                    ControlSend, SysListView321, {Down}, ^Sound$		            ;Normal ops: Not correct device so move down one to check next list item
+                    }
+                if (A_Index >= i) ;or (A_Index >= k))					                            ;NEW: Back to multi-use of i, it's surprisingly clever for an amateur like me. OLD: Checked all list items OR reached end of i timer (previously just i for both)
+                    break 2                                                                                      ;Breaks PerDeviceLoop AND ListRestartLoop (Still in RetryLoop though)
+                
+                } ;DeviceWaitLoop
+            
+            notConnected = 						                                                        ;notPlug is cleared for restarting list to (hopefully) find newly connected device
+            Sleep 2000						                                                                    ;allowance for BT headset to report available
+            
+            } ;/ListRestartLoop
+            
+        failedAttempts++ 
+       if (A_Index >= 200)                                                                              ;Previously only 5
+       {
+           MsgBox Failed attempts: %failedAttempts%`nDevice not found`nEnsure "show disconnected devices" is checked`nCheck name of device `/ filename`nQuitting...
+           ExitApp
+           }
+    
+      } ;/RetryLoop
+      
 Return
 
 ;--------------------------------------------------------------------------------------------------------------
@@ -745,6 +761,11 @@ BackToProperties:	;Probs won't use this, currently might as well just be single 
   else
    break
 Return    
+
+;--------------------------------------------------------------------------------------------------------------
+debugMsgBox:
+    ;MsgBox % "A_Index: " A_Index "`ni (list count): " i "`nj: " j "`nk (attempts/waiting before RetryLoop): " k "`ndesDev: "desDev "`ndesDevNum: " desDevNum "`ndev" desDevNum "Name: " dev%desDevNum%Name "`ndev" desDevNum "Nick: " dev%desDevNum%Nick "`nfailedAttempts: " failedAttempts "`n`nx: " x
+Return
 
 ;--------------------------------------------------------------------------------------------------------------
 ;=============HOTKEYS==========================================================================================
